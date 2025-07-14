@@ -1,688 +1,709 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-Hant" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>個人化班表與薪資追蹤器</title>
+    <title>個人化班表與薪資追蹤器 V3.4</title>
+    <meta name="theme-color" content="#1f2937">
+    <link rel="manifest" href="manifest.json">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
-        html, body {
-            height: 100%;
-            overflow: hidden; /* 防止整個頁面滾動 */
+        :root {
+            --bg-color: #f9fafb; --text-color: #111827; --card-bg: #ffffff; --border-color: #e5e7eb; --primary-color: #3b82f6; --primary-text-color: #ffffff;
         }
-        body {
-            font-family: 'Noto Sans TC', sans-serif;
-            display: flex;
-            flex-direction: column;
+        html.dark {
+            --bg-color: #111827; --text-color: #f9fafb; --card-bg: #1f2937; --border-color: #374151;
         }
-        .calendar-grid {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-        }
-        .week-band:nth-child(even) {
-            background-color: rgba(255, 255, 255, 0.05);
-        }
-        .date-cell {
-            position: relative;
-            padding-top: 100%; /* 維持方格比例 */
-            transition: all 0.2s ease-in-out;
-        }
-        .date-cell-content {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            padding: 4px;
-        }
-        .note-text {
-            font-size: 0.65rem;
-            line-height: 1.2;
-            word-break: break-all;
-            overflow: hidden;
-            max-height: 3.6em; /* 限制備註顯示行數 */
-        }
-        .clear-button-progress {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            height: 100%;
-            background-color: rgba(220, 38, 38, 0.7);
-            transition: width 10s linear; /* 10秒動畫 */
-            border-radius: 0.375rem;
-            width: 0;
-        }
-        /* 隱藏原生 input[type=time] 的圖示 */
-        input[type="time"]::-webkit-calendar-picker-indicator,
-        input[type="date"]::-webkit-calendar-picker-indicator {
-            display: none;
-        }
-        /* 自訂備註開關樣式 */
-        #toggle-notes:checked + div .dot {
-            transform: translateX(1rem);
-        }
-        #toggle-notes:checked + div .block {
-            background-color: #3b82f6; /* blue-600 */
-        }
-        /* 讓日曆主體可以滾動 */
-        #calendar-body-wrapper {
-            flex-grow: 1;
-            overflow-y: auto;
-        }
-        .summary-details-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 0.5rem;
-            border-bottom: 1px solid #374151; /* gray-700 */
-        }
-        .summary-details-item:last-child {
-            border-bottom: none;
-        }
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: var(--bg-color); color: var(--text-color); transition: background-color 0.3s, color 0.3s; }
+        .card { background-color: var(--card-bg); border: 1px solid var(--border-color); transition: background-color 0.3s, border-color 0.3s; }
+        .border-color { border-color: var(--border-color); }
+        .primary-text { color: var(--primary-color); }
+        .primary-bg { background-color: var(--primary-color); color: var(--primary-text-color); }
+        .date-cell { position: relative; padding-top: 100%; }
+        .date-cell-content { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 4px; }
+        .note-text, .daily-earnings-text { font-size: 0.65rem; line-height: 1.2; word-break: break-all; overflow:hidden; }
+        .daily-earnings-text { max-height: 1.2em; }
+        .note-text { max-height: 2.4em; }
+        .today-highlight { background-color: var(--primary-color) !important; color: white; border-radius: 9999px; width: 1.5rem; height: 1.5rem; display:flex; align-items:center; justify-content:center; }
+        .clear-button-progress { position: absolute; bottom: 0; left: 0; height: 100%; background-color: rgba(220, 38, 38, 0.7); transition: width 10s linear; width: 0; }
+        .view-btn.active { background-color: var(--primary-color); color: var(--primary-text-color); }
+        .toggle-checkbox { appearance: none; width: 40px; height: 24px; background-color: #4b5563; border-radius: 9999px; position: relative; cursor: pointer; transition: background-color 0.2s; }
+        .toggle-checkbox::before { content: ''; position: absolute; width: 16px; height: 16px; background-color: white; border-radius: 50%; top: 4px; left: 4px; transition: transform 0.2s; }
+        .toggle-checkbox:checked { background-color: var(--primary-color); }
+        .toggle-checkbox:checked::before { transform: translateX(16px); }
     </style>
 </head>
-<body class="bg-gray-900 text-white">
+<body class="flex flex-col h-screen">
 
     <!-- Header -->
-    <header class="p-4 bg-gray-800 shadow-lg flex items-center justify-between flex-shrink-0">
-        <div class="flex items-center space-x-2">
-            <button id="prev-month-btn" class="p-2 rounded-full hover:bg-gray-700 transition">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-            </button>
-            <select id="year-select" class="bg-gray-700 text-white rounded px-2 py-1 focus:outline-none"></select>
-            <select id="month-select" class="bg-gray-700 text-white rounded px-2 py-1 focus:outline-none"></select>
-            <button id="next-month-btn" class="p-2 rounded-full hover:bg-gray-700 transition">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            </button>
-        </div>
-        <div class="flex items-center space-x-4">
-            <div class="flex items-center space-x-2">
-                <span class="text-sm">備註</span>
-                <label for="toggle-notes" class="flex items-center cursor-pointer">
-                    <div class="relative">
-                        <input type="checkbox" id="toggle-notes" class="sr-only">
-                        <div class="block bg-gray-600 w-10 h-6 rounded-full transition"></div>
-                        <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition"></div>
-                    </div>
-                </label>
+    <header class="p-3 bg-opacity-80 backdrop-blur-sm sticky top-0 z-20 card flex-shrink-0">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-1 md:space-x-2">
+                <button id="prev-btn" class="p-2 rounded-full hover:bg-gray-500/20 transition">&lt;</button>
+                <select id="year-select" class="card bg-transparent p-1 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+                <select id="month-select" class="card bg-transparent p-1 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+                <button id="next-btn" class="p-2 rounded-full hover:bg-gray-500/20 transition">&gt;</button>
             </div>
-            <button id="settings-btn" class="text-gray-400 hover:text-white transition">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0-2l.15-.08a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-            </button>
+            <div class="flex items-center space-x-2 md:space-x-4">
+                <div id="view-switcher" class="hidden md:flex items-center border border-color rounded-full p-0.5">
+                    <button data-view="month" class="view-btn px-3 py-1 text-sm rounded-full" data-lang="view_month">月</button>
+                    <button data-view="week" class="view-btn px-3 py-1 text-sm rounded-full" data-lang="view_week">週</button>
+                    <button data-view="day" class="view-btn px-3 py-1 text-sm rounded-full" data-lang="view_day">日</button>
+                </div>
+                <button id="settings-btn" class="p-2 rounded-full hover:bg-gray-500/20 transition">⚙️</button>
+            </div>
+        </div>
+        <div id="view-switcher-mobile" class="flex md:hidden items-center border border-color rounded-full p-0.5 mt-2 justify-center">
+            <button data-view="month" class="view-btn flex-1 px-3 py-1 text-sm rounded-full" data-lang="view_month">月</button>
+            <button data-view="week" class="view-btn flex-1 px-3 py-1 text-sm rounded-full" data-lang="view_week">週</button>
+            <button data-view="day" class="view-btn flex-1 px-3 py-1 text-sm rounded-full" data-lang="view_day">日</button>
         </div>
     </header>
 
-    <!-- Main Content (Calendar + Summary) -->
-    <div id="calendar-body-wrapper" class="flex-grow">
-        <!-- Calendar -->
-        <main id="calendar-container" class="flex-shrink-0">
-            <div class="calendar-grid text-center text-xs font-bold text-gray-400 p-2">
-                <div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div class="text-red-400">六</div><div class="text-red-400">日</div>
+    <!-- Main Content -->
+    <main id="main-content" class="flex-grow overflow-y-auto p-2 md:p-4">
+        <div id="month-view" class="view-container">
+            <div class="grid grid-cols-7 text-center text-xs font-bold text-gray-400 p-2">
+                <div data-lang="weekday_sun_short">日</div><div data-lang="weekday_mon_short">一</div><div data-lang="weekday_tue_short">二</div><div data-lang="weekday_wed_short">三</div><div data-lang="weekday_thu_short">四</div><div data-lang="weekday_fri_short">五</div><div data-lang="weekday_sat_short">六</div>
             </div>
-            <div id="calendar-body"></div>
-        </main>
+            <div id="calendar-body" class="grid grid-cols-7"></div>
+        </div>
+        <div id="week-view" class="view-container hidden"></div>
+        <div id="day-view" class="view-container hidden"></div>
 
-        <!-- Summary Section -->
-        <section class="p-4 mt-4">
-            <details class="bg-gray-800 rounded-lg shadow-lg" open>
-                <summary class="p-4 font-bold text-lg cursor-pointer flex justify-between items-center">
-                    <span>自訂日期區間薪資彙總</span>
-                    <span class="text-sm text-gray-400">點擊展開/收合</span>
-                </summary>
-                <div class="p-4 border-t border-gray-700">
-                    <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
-                        <input type="date" id="summary-start-date" class="bg-gray-700 rounded p-2 text-center">
-                        <span class="text-gray-400">至</span>
-                        <input type="date" id="summary-end-date" class="bg-gray-700 rounded p-2 text-center">
-                        <button id="calculate-summary-btn" class="bg-blue-600 hover:bg-blue-700 p-2 px-4 rounded-lg transition w-full sm:w-auto">計算</button>
-                    </div>
-                    <div id="summary-result" class="bg-gray-900 p-4 rounded-lg min-h-[100px]">
-                        <p class="text-gray-500 text-center">請選擇日期區間並點擊計算。</p>
-                    </div>
-                </div>
-            </details>
+        <!-- Data Import/Export -->
+        <section class="mt-4 card p-4 rounded-lg">
+            <h3 class="font-bold text-lg mb-4" data-lang="data_transfer_title">數據匯入與匯出</h3>
+            <p class="text-sm text-gray-500 mb-4" data-lang="data_transfer_desc">您可以在此匯出所有資料以作備份，或在新裝置上匯入資料以完成轉移。</p>
+            <div class="flex justify-end space-x-2">
+                <button id="import-json-btn" class="text-sm bg-gray-600 text-white font-bold py-2 px-4 rounded" data-lang="import_json">匯入 JSON</button>
+                <input type="file" id="import-json-input" class="hidden" accept=".json">
+                <button id="export-json" class="text-sm primary-bg font-bold py-2 px-4 rounded" data-lang="export_json">匯出 JSON</button>
+            </div>
         </section>
-    </div>
-
+    </main>
 
     <!-- Footer -->
-    <footer class="p-4 bg-gray-800 shadow-inner flex justify-around text-center flex-shrink-0">
+    <footer class="p-3 card flex-shrink-0 flex justify-around text-center">
         <div>
-            <p class="text-sm text-gray-400">本月總工時</p>
-            <p id="total-hours" class="text-xl font-bold">0 小時</p>
+            <p id="footer-title" class="text-sm text-gray-400" data-lang="footer_total_hours_month">本月總工時</p>
+            <p id="total-hours" class="text-lg md:text-xl font-bold">0</p>
         </div>
         <div>
-            <p class="text-sm text-gray-400">預估薪資 (時薪: <span id="wage-display">190</span>)</p>
-            <p id="total-earnings" class="text-xl font-bold text-green-400">$ 0</p>
+            <p class="text-sm text-gray-400" data-lang="footer_estimated_earnings">預估薪資</p>
+            <p id="total-earnings" class="text-lg md:text-xl font-bold primary-text">$ 0</p>
         </div>
     </footer>
 
-    <!-- Shift Modal -->
-    <div id="shift-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50">
-        <div class="bg-gray-800 rounded-lg shadow-xl w-11/12 max-w-sm p-6">
-            <h3 class="text-lg font-bold mb-4">編輯 <span id="modal-date"></span></h3>
-            <div class="space-y-4">
-                <button data-shift="preset1" class="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-lg transition">時段 1: 18:00 - 23:00</button>
-                <button data-shift="preset2" class="w-full bg-teal-600 hover:bg-teal-700 p-3 rounded-lg transition">時段 2: 15:00 - 23:00 (休1h)</button>
-                <div>
-                    <p class="text-center text-gray-400 mb-2">自訂時段</p>
-                    <div class="flex items-center justify-center space-x-2">
-                        <input type="time" id="custom-start" class="bg-gray-700 rounded p-2 w-28 text-center">
-                        <span>-</span>
-                        <input type="time" id="custom-end" class="bg-gray-700 rounded p-2 w-28 text-center">
-                    </div>
-                     <button id="save-custom-shift" class="w-full bg-purple-600 hover:bg-purple-700 p-2 mt-2 rounded-lg transition">儲存自訂時段</button>
-                </div>
-                <textarea id="note-input" class="w-full bg-gray-700 rounded p-2 h-24" placeholder="在此輸入備註 (例如: 請假、國定假日加班...)"></textarea>
+    <!-- Modals -->
+    <div id="shift-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center hidden z-40 p-4">
+        <div class="card rounded-lg shadow-xl w-full max-w-md p-6 overflow-y-auto max-h-full">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold" data-lang="modal_edit_shift_title">編輯班表 <span id="modal-date"></span></h3>
+                <div id="modal-daily-total" class="font-bold primary-text"></div>
             </div>
-            <div class="flex justify-between mt-6">
-                <button id="delete-shift" class="bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded transition">清除本日紀錄</button>
-                <button id="close-modal" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded transition">關閉</button>
+            <div id="shifts-list" class="max-h-40 overflow-y-auto mb-2 space-y-2 border-b border-color pb-2"></div>
+            <div id="add-shift-form" class="space-y-3">
+                <div class="flex items-center space-x-2">
+                    <input type="time" id="custom-start" class="card bg-transparent p-2 w-full rounded">
+                    <span class="font-bold">-</span>
+                    <input type="time" id="custom-end" class="card bg-transparent p-2 w-full rounded">
+                </div>
+                <div id="allowance-container" class="hidden items-center space-x-2">
+                    <label for="allowance-rate" class="text-sm" data-lang="modal_allowance_rate">加成比例:</label>
+                    <input type="number" id="allowance-rate" value="1" step="0.1" class="card bg-transparent p-2 w-20 rounded text-center">
+                </div>
+                <textarea id="shift-note" class="card bg-transparent p-2 w-full rounded text-sm" placeholder="班表備註..."></textarea>
+                <div class="flex space-x-2">
+                    <button id="save-shift-btn" class="w-full primary-bg p-2 rounded-lg" data-lang="modal_add_shift_btn">新增此時段</button>
+                    <button id="cancel-edit-btn" class="w-full bg-gray-500/50 p-2 rounded-lg hidden" data-lang="btn_cancel">取消編輯</button>
+                </div>
+            </div>
+            <div id="adjustment-container" class="mt-4 space-y-2 hidden">
+                 <p class="text-sm font-bold border-t border-color pt-2" data-lang="modal_adjustment_title">額外金額調整</p>
+                 <div class="flex items-center space-x-2">
+                    <input type="number" id="adjustment-amount" placeholder="金額" class="card bg-transparent p-2 w-full rounded">
+                    <input type="text" id="adjustment-note" placeholder="事由 (例如: 紅包)" class="card bg-transparent p-2 w-full rounded">
+                 </div>
+                 <button id="save-adjustment-btn" class="w-full bg-teal-600 text-white p-2 rounded-lg" data-lang="modal_add_adjustment_btn">新增此調整</button>
+            </div>
+            <div class="flex justify-end mt-6">
+                <button id="close-modal" class="bg-gray-500/50 text-white font-bold py-2 px-4 rounded" data-lang="btn_close">關閉</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="settings-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center hidden z-40 p-4">
+        <div class="card rounded-lg shadow-xl w-full max-w-md p-6 space-y-4 overflow-y-auto max-h-full">
+            <h3 class="text-lg font-bold" data-lang="settings_title">設定</h3>
+            <div class="space-y-2">
+                <div class="flex items-center justify-between"><label for="hourly-wage" data-lang="settings_hourly_wage">時薪</label><input type="number" id="hourly-wage" class="card bg-transparent w-24 text-center p-2 rounded"></div>
+                <div class="flex items-center justify-between"><label for="language-select" data-lang="settings_language">語言</label><select id="language-select" class="card bg-transparent p-2 rounded"></select></div>
+            </div>
+            <div class="border-t border-color pt-4">
+                <h4 class="font-bold" data-lang="settings_display_title">顯示設定</h4>
+                <div class="space-y-2 mt-2">
+                    <div class="flex items-center justify-between"><label for="setting-theme" data-lang="settings_theme">深色模式</label><input type="checkbox" id="setting-theme" class="toggle-checkbox"></div>
+                    <div class="flex items-center justify-between"><label for="setting-show-notes" data-lang="settings_show_notes">在月曆顯示備註</label><input type="checkbox" id="setting-show-notes" class="toggle-checkbox"></div>
+                    <div class="flex items-center justify-between"><label for="setting-show-daily-earnings" data-lang="settings_show_daily_earnings">在月曆顯示單日金額</label><input type="checkbox" id="setting-show-daily-earnings" class="toggle-checkbox"></div>
+                </div>
+            </div>
+            <div class="border-t border-color pt-4">
+                <h4 class="font-bold" data-lang="settings_advanced_title">進階功能</h4>
+                <div class="space-y-2 mt-2">
+                    <div class="flex items-center justify-between"><label for="setting-multi-shift" data-lang="settings_multi_shift">單日多班模式</label><input type="checkbox" id="setting-multi-shift" class="toggle-checkbox"></div>
+                    <div class="flex items-center justify-between"><label for="setting-allowance" data-lang="settings_allowance">津貼加成功能</label><input type="checkbox" id="setting-allowance" class="toggle-checkbox"></div>
+                    <div class="flex items-center justify-between"><label for="setting-adjustment" data-lang="settings_adjustment">額外調整功能</label><input type="checkbox" id="setting-adjustment" class="toggle-checkbox"></div>
+                </div>
+            </div>
+            <div class="mt-4 border-t border-color pt-4">
+                 <p class="text-sm text-center text-red-400" data-lang="settings_danger_zone">危險操作</p>
+                 <button id="clear-data-btn" class="w-full bg-red-800 text-white font-bold py-3 px-4 rounded relative overflow-hidden">
+                    <span class="z-10 relative" data-lang="settings_clear_data_btn">按住10秒清除所有資料</span>
+                    <div id="clear-progress" class="clear-button-progress"></div>
+                </button>
+            </div>
+            <div class="flex justify-end mt-4">
+                <button id="save-settings" class="primary-bg font-bold py-2 px-4 rounded" data-lang="btn_save">儲存設定</button>
             </div>
         </div>
     </div>
 
-    <!-- Settings Modal -->
-    <div id="settings-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50">
-        <div class="bg-gray-800 rounded-lg shadow-xl w-11/12 max-w-sm p-6">
-            <h3 class="text-lg font-bold mb-4">設定</h3>
-            <div class="space-y-4">
-                <div class="flex items-center justify-between">
-                    <label for="hourly-wage" class="text-lg">時薪設定</label>
-                    <input type="number" id="hourly-wage" class="bg-gray-700 text-white w-24 text-center p-2 rounded" value="190">
-                </div>
-                 <button id="save-settings" class="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-lg transition">儲存設定</button>
-            </div>
-            <div class="mt-8 border-t border-gray-700 pt-4">
-                 <p class="text-sm text-center text-red-400 mb-2">危險操作</p>
-                 <button id="clear-data-btn" class="w-full bg-red-800 text-white font-bold py-3 px-4 rounded relative overflow-hidden">
-                    <span class="z-10 relative">按住10秒清除所有資料</span>
-                    <div id="clear-progress" class="clear-button-progress"></div>
-                </button>
-            </div>
-            <div class="flex justify-end mt-6">
-                <button id="close-settings" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded transition">關閉</button>
+    <div id="confirm-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center hidden z-50 p-4">
+        <div class="card rounded-lg shadow-xl w-full max-w-sm p-6">
+            <p id="confirm-message" class="mb-4"></p>
+            <div class="flex justify-end space-x-2">
+                <button id="confirm-cancel" class="bg-gray-500/50 font-bold py-2 px-4 rounded" data-lang="btn_cancel">取消</button>
+                <button id="confirm-ok" class="bg-red-600 text-white font-bold py-2 px-4 rounded" data-lang="btn_confirm">確認</button>
             </div>
         </div>
     </div>
 
 <script>
+// =================================================================================
+// MAIN APPLICATION LOGIC (V3.4)
+// =================================================================================
 document.addEventListener('DOMContentLoaded', () => {
-    // --- DOM Elements ---
-    const yearSelect = document.getElementById('year-select');
-    const monthSelect = document.getElementById('month-select');
-    const prevMonthBtn = document.getElementById('prev-month-btn');
-    const nextMonthBtn = document.getElementById('next-month-btn');
-    const calendarBody = document.getElementById('calendar-body');
-    const totalHoursEl = document.getElementById('total-hours');
-    const totalEarningsEl = document.getElementById('total-earnings');
-    const wageDisplayEl = document.getElementById('wage-display');
-    const toggleNotes = document.getElementById('toggle-notes');
+    // --- PWA Registration ---
+    if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').then(reg => console.log('SW registered:', reg)).catch(err => console.error('SW registration failed:', err)); }); }
 
-    // Modals
-    const shiftModal = document.getElementById('shift-modal');
-    const settingsModal = document.getElementById('settings-modal');
-    const closeModalBtn = document.getElementById('close-modal');
-    const closeSettingsBtn = document.getElementById('close-settings');
-    const settingsBtn = document.getElementById('settings-btn');
-
-    // Shift Modal Elements
-    const modalDateEl = document.getElementById('modal-date');
-    const noteInput = document.getElementById('note-input');
-    const deleteShiftBtn = document.getElementById('delete-shift');
-    const customStartInput = document.getElementById('custom-start');
-    const customEndInput = document.getElementById('custom-end');
-    const saveCustomBtn = document.getElementById('save-custom-shift');
-
-    // Settings Modal Elements
-    const hourlyWageInput = document.getElementById('hourly-wage');
-    const saveSettingsBtn = document.getElementById('save-settings');
-    const clearDataBtn = document.getElementById('clear-data-btn');
-    const clearProgress = document.getElementById('clear-progress');
+    // --- i18n ---
+    const translations = {
+        'en': { "view_month": "Month", "view_week": "Week", "view_day": "Day", "weekday_sun_short": "Sun", "weekday_mon_short": "Mon", "weekday_tue_short": "Tue", "weekday_wed_short": "Wed", "weekday_thu_short": "Thu", "weekday_fri_short": "Fri", "weekday_sat_short": "Sat", "data_transfer_title": "Data Import/Export", "data_transfer_desc": "Export your data for backup, or import it on a new device.", "import_json": "Import JSON", "export_json": "Export JSON", "footer_total_hours_month": "Hours This Month", "footer_total_hours_week": "Hours This Week", "footer_total_hours_day": "Hours Today", "footer_estimated_earnings": "Est. Earnings", "modal_edit_shift_title": "Edit Schedule", "modal_allowance_rate": "Rate:", "modal_add_shift_btn": "Add Shift", "modal_update_shift_btn": "Update Shift", "modal_adjustment_title": "Monetary Adjustment", "modal_add_adjustment_btn": "Add Adjustment", "settings_title": "Settings", "settings_hourly_wage": "Hourly Wage", "settings_language": "Language", "settings_display_title": "Display Settings", "settings_theme": "Dark Mode", "settings_show_notes": "Show Notes in Calendar", "settings_show_daily_earnings": "Show Daily Earnings in Calendar", "settings_advanced_title": "Advanced Features", "settings_multi_shift": "Multi-Shift Mode", "settings_allowance": "Allowance Feature", "settings_adjustment": "Adjustment Feature", "settings_danger_zone": "Danger Zone", "settings_clear_data_btn": "Hold 10s to Clear All Data", "btn_save": "Save Settings", "btn_close": "Close", "btn_cancel": "Cancel", "btn_confirm": "Confirm" },
+        'zh-TW': { "view_month": "月", "view_week": "週", "view_day": "日", "weekday_sun_short": "日", "weekday_mon_short": "一", "weekday_tue_short": "二", "weekday_wed_short": "三", "weekday_thu_short": "四", "weekday_fri_short": "五", "weekday_sat_short": "六", "data_transfer_title": "數據匯入與匯出", "data_transfer_desc": "您可以在此匯出所有資料以作備份，或在新裝置上匯入資料以完成轉移。", "import_json": "匯入 JSON", "export_json": "匯出 JSON", "footer_total_hours_month": "本月總工時", "footer_total_hours_week": "本週總工時", "footer_total_hours_day": "本日總工時", "footer_estimated_earnings": "預估薪資", "modal_edit_shift_title": "編輯班表", "modal_allowance_rate": "加成比例:", "modal_add_shift_btn": "新增此時段", "modal_update_shift_btn": "更新此時段", "modal_adjustment_title": "額外金額調整", "modal_add_adjustment_btn": "新增此調整", "settings_title": "設定", "settings_hourly_wage": "時薪", "settings_language": "語言", "settings_display_title": "顯示設定", "settings_theme": "深色模式", "settings_show_notes": "在月曆顯示備註", "settings_show_daily_earnings": "在月曆顯示單日金額", "settings_advanced_title": "進階功能", "settings_multi_shift": "單日多班模式", "settings_allowance": "津貼加成功能", "settings_adjustment": "額外調整功能", "settings_danger_zone": "危險操作", "settings_clear_data_btn": "按住10秒清除所有資料", "btn_save": "儲存設定", "btn_close": "關閉", "btn_cancel": "取消", "btn_confirm": "確認" },
+        'zh-CN': { "view_month": "月", "view_week": "周", "view_day": "日", "weekday_sun_short": "日", "weekday_mon_short": "一", "weekday_tue_short": "二", "weekday_wed_short": "三", "weekday_thu_short": "四", "weekday_fri_short": "五", "weekday_sat_short": "六", "data_transfer_title": "数据导入与导出", "data_transfer_desc": "您可以在此导出所有数据以作备份，或在新设备上导入数据以完成转移。", "import_json": "导入 JSON", "export_json": "导出 JSON", "footer_total_hours_month": "本月总工时", "footer_total_hours_week": "本周总工时", "footer_total_hours_day": "本日总工时", "footer_estimated_earnings": "预估薪资", "modal_edit_shift_title": "编辑班表", "modal_allowance_rate": "加成比例:", "modal_add_shift_btn": "新增此时段", "modal_update_shift_btn": "更新此时段", "modal_adjustment_title": "额外金额调整", "modal_add_adjustment_btn": "新增此调整", "settings_title": "设置", "settings_hourly_wage": "时薪", "settings_language": "语言", "settings_display_title": "显示设置", "settings_theme": "深色模式", "settings_show_notes": "在月历显示备注", "settings_show_daily_earnings": "在月历显示单日金额", "settings_advanced_title": "进阶功能", "settings_multi_shift": "单日多班模式", "settings_allowance": "津贴加成功能", "settings_adjustment": "额外调整功能", "settings_danger_zone": "危险操作", "settings_clear_data_btn": "按住10秒清除所有数据", "btn_save": "保存设置", "btn_close": "关闭", "btn_cancel": "取消", "btn_confirm": "确认" }
+    };
     
-    // Summary Elements
-    const summaryStartDate = document.getElementById('summary-start-date');
-    const summaryEndDate = document.getElementById('summary-end-date');
-    const calculateSummaryBtn = document.getElementById('calculate-summary-btn');
-    const summaryResultEl = document.getElementById('summary-result');
+    // --- DB Helper ---
+    const db = {
+        instance: null,
+        init() { return new Promise((resolve, reject) => { const request = indexedDB.open('ScheduleDB_v3_4', 1); request.onupgradeneeded = e => { const dbInstance = e.target.result; if (!dbInstance.objectStoreNames.contains('events')) { const eventStore = dbInstance.createObjectStore('events', { keyPath: 'id', autoIncrement: true }); eventStore.createIndex('date', 'date', { unique: false }); } if (!dbInstance.objectStoreNames.contains('settings')) { dbInstance.createObjectStore('settings', { keyPath: 'key' }); } }; request.onsuccess = e => { this.instance = e.target.result; resolve(); }; request.onerror = e => reject(e.target.error); }); },
+        _transaction(storeName, mode) { return this.instance.transaction(storeName, mode).objectStore(storeName); },
+        put(storeName, data) { return new Promise((resolve, reject) => { const req = this._transaction(storeName, 'readwrite').put(data); req.onsuccess = e => resolve(e.target.result); req.onerror = e => reject(e.target.error); }); },
+        delete(storeName, key) { return new Promise((resolve, reject) => { const req = this._transaction(storeName, 'readwrite').delete(key); req.onsuccess = () => resolve(); req.onerror = e => reject(e.target.error); }); },
+        clear(storeName) { return new Promise((resolve, reject) => { const req = this._transaction(storeName, 'readwrite').clear(); req.onsuccess = () => resolve(); req.onerror = e => reject(e.target.error); }); },
+        getAll(storeName) { return new Promise((resolve, reject) => { const req = this._transaction(storeName, 'readonly').getAll(); req.onsuccess = e => resolve(e.target.result); req.onerror = e => reject(e.target.error); }); },
+    };
+    
+    // --- App State ---
+    const state = {
+        currentDate: new Date(),
+        currentView: 'month',
+        settings: { hourlyWage: 190, language: 'zh-TW', theme: 'dark', showNotes: false, showDailyEarnings: false, multiShift: false, allowance: false, adjustment: false },
+        selectedDateKey: null,
+        editingEventId: null,
+        events: []
+    };
 
+    // --- DOM Elements ---
+    const $ = (selector) => document.querySelector(selector);
+    const $$ = (selector) => document.querySelectorAll(selector);
+    const elements = {
+        yearSelect: $('#year-select'), monthSelect: $('#month-select'), prevBtn: $('#prev-btn'), nextBtn: $('#next-btn'),
+        viewSwitcher: $('#view-switcher'), viewSwitcherMobile: $('#view-switcher-mobile'),
+        monthView: $('#month-view'), weekView: $('#week-view'), dayView: $('#day-view'), calendarBody: $('#calendar-body'),
+        footerTitle: $('#footer-title'), totalHours: $('#total-hours'), totalEarnings: $('#total-earnings'),
+        shiftModal: $('#shift-modal'), closeModal: $('#close-modal'), modalDate: $('#modal-date'), modalDailyTotal: $('#modal-daily-total'),
+        shiftsList: $('#shifts-list'), addShiftForm: $('#add-shift-form'), saveShiftBtn: $('#save-shift-btn'), cancelEditBtn: $('#cancel-edit-btn'),
+        customStart: $('#custom-start'), customEnd: $('#custom-end'), shiftNote: $('#shift-note'),
+        allowanceContainer: $('#allowance-container'), allowanceRate: $('#allowance-rate'),
+        adjustmentContainer: $('#adjustment-container'), adjustmentAmount: $('#adjustment-amount'), adjustmentNote: $('#adjustment-note'), saveAdjustmentBtn: $('#save-adjustment-btn'),
+        settingsBtn: $('#settings-btn'), settingsModal: $('#settings-modal'), closeSettings: $('#close-settings'), saveSettings: $('#save-settings'),
+        hourlyWageInput: $('#hourly-wage'), languageSelect: $('#language-select'),
+        settingTheme: $('#setting-theme'), settingShowNotes: $('#setting-show-notes'), settingShowDailyEarnings: $('#setting-show-daily-earnings'),
+        settingMultiShift: $('#setting-multi-shift'), settingAllowance: $('#setting-allowance'), settingAdjustment: $('#setting-adjustment'),
+        clearDataBtn: $('#clear-data-btn'), clearProgress: $('#clear-progress'),
+        importJsonBtn: $('#import-json-btn'), importJsonInput: $('#import-json-input'), exportJsonBtn: $('#export-json'),
+        confirmModal: $('#confirm-modal'), confirmMessage: $('#confirm-message'), confirmOk: $('#confirm-ok'), confirmCancel: $('#confirm-cancel'),
+    };
 
-    // --- State ---
-    let currentDate = new Date(2025, 6, 1); // Default to 2025 July
-    let events = {};
-    let hourlyWage = 190;
-    let showNotes = true;
-    let selectedDateKey = null;
-    let longPressTimer;
-    let clearDataTimer;
-    let clearDataHoldStart;
-
-    // --- Initialization ---
-    function init() {
-        loadData();
+    // --- Main Init Function ---
+    async function init() {
+        await db.init();
+        await loadData();
+        const userLang = navigator.language || navigator.userLanguage;
+        const defaultLang = state.settings.language || (userLang.startsWith('zh-CN') ? 'zh-CN' : userLang.startsWith('zh') ? 'zh-TW' : 'en');
+        await setLanguage(defaultLang);
+        setTheme(state.settings.theme);
         populateSelectors();
         updateDateFromSelectors();
-        renderCalendar();
-        updateTotals();
+        render();
         setupEventListeners();
-        updateNoteToggleVisual();
     }
 
-    // --- Data Persistence ---
-    function saveData() {
-        localStorage.setItem('schedule_events', JSON.stringify(events));
-        localStorage.setItem('schedule_wage', hourlyWage);
-        localStorage.setItem('schedule_show_notes', showNotes);
+    // --- Data & State Management ---
+    async function loadData() {
+        const settingsData = await db.getAll('settings');
+        if (settingsData.length > 0) {
+            settingsData.forEach(s => { if(state.settings.hasOwnProperty(s.key)) state.settings[s.key] = s.value; });
+        } else {
+            await saveData('settings');
+        }
+        state.events = await db.getAll('events');
+    }
+    async function saveData(type) {
+        if (type === 'settings') {
+            for (const key in state.settings) {
+                await db.put('settings', { key, value: state.settings[key] });
+            }
+        }
     }
 
-    function loadData() {
-        const savedEvents = localStorage.getItem('schedule_events');
-        if (savedEvents) {
-            events = JSON.parse(savedEvents);
+    // --- Rendering ---
+    function render() {
+        $$('.view-container').forEach(v => v.classList.add('hidden'));
+        $$('.view-btn').forEach(b => b.classList.remove('active'));
+        $$(`[data-view="day"]`).forEach(b => b.classList.toggle('hidden', !state.settings.multiShift));
+        if (!state.settings.multiShift && state.currentView === 'day') state.currentView = 'week';
+        
+        $$(`[data-view="${state.currentView}"]`).forEach(b => b.classList.add('active'));
+
+        switch (state.currentView) {
+            case 'month': renderMonthView(); break;
+            case 'week': renderWeekView(); break;
+            case 'day': renderDayView(); break;
         }
-        const savedWage = localStorage.getItem('schedule_wage');
-        if (savedWage) {
-            hourlyWage = parseFloat(savedWage);
-        }
-        const savedShowNotes = localStorage.getItem('schedule_show_notes');
-        if (savedShowNotes !== null) {
-            showNotes = JSON.parse(savedShowNotes);
-        }
-        hourlyWageInput.value = hourlyWage;
-        wageDisplayEl.textContent = hourlyWage;
-        toggleNotes.checked = showNotes;
+        updateTotals();
     }
 
-    // --- Calendar Rendering ---
-    function renderCalendar() {
-        calendarBody.innerHTML = '';
-        const year = currentDate.getFullYear();
-        const month = currentDate.getMonth();
-
-        const firstDayOfMonth = new Date(year, month, 1);
-        const lastDayOfMonth = new Date(year, month + 1, 0);
-        const daysInMonth = lastDayOfMonth.getDate();
-
-        let dayOfWeek = firstDayOfMonth.getDay();
-        dayOfWeek = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Monday is 0, Sunday is 6
-
-        const calendarFragment = document.createDocumentFragment();
-        let weekEl = document.createElement('div');
-        weekEl.className = 'calendar-grid week-band';
-
-        for (let i = 0; i < dayOfWeek; i++) {
-            const padder = document.createElement('div');
-            padder.className = 'date-cell';
-            weekEl.appendChild(padder);
-        }
+    function renderMonthView() {
+        elements.monthView.classList.remove('hidden');
+        elements.calendarBody.innerHTML = '';
+        const year = state.currentDate.getFullYear();
+        const month = state.currentDate.getMonth();
+        const firstDay = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        
+        for (let i = 0; i < firstDay; i++) { elements.calendarBody.appendChild(document.createElement('div')); }
 
         for (let day = 1; day <= daysInMonth; day++) {
-            if ((dayOfWeek + day - 1) % 7 === 0 && day > 1) {
-                calendarFragment.appendChild(weekEl);
-                weekEl = document.createElement('div');
-                weekEl.className = 'calendar-grid week-band';
-            }
+            const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const cell = document.createElement('div');
+            cell.className = 'date-cell border-t border-l border-color cursor-pointer hover:bg-gray-500/10';
+            cell.dataset.date = dateKey;
             
-            const cell = createDateCell(year, month, day);
-            weekEl.appendChild(cell);
-        }
-        calendarFragment.appendChild(weekEl);
+            const dayEvents = state.events.filter(e => e.date === dateKey);
+            const totalHours = dayEvents.filter(e => e.type === 'shift').reduce((sum, e) => sum + e.hours, 0);
+            const note = dayEvents.find(e => e.type === 'shift' && e.note)?.note || '';
+            const dailyTotal = calculateDayTotal(dateKey);
 
-        calendarBody.appendChild(calendarFragment);
-        updateNoteVisibility();
+            cell.innerHTML = `
+                <div class="date-cell-content p-1">
+                    <span class="text-xs ${new Date(dateKey+'T00:00:00').toDateString() === new Date().toDateString() ? 'today-highlight' : ''}">${day}</span>
+                    <div class="text-center">
+                        ${totalHours > 0 ? `<div class="font-bold primary-text text-sm">${totalHours.toFixed(1)}h</div>` : ''}
+                        ${state.settings.showDailyEarnings && dailyTotal > 0 ? `<div class="daily-earnings-text text-green-500">$${Math.round(dailyTotal)}</div>` : ''}
+                        ${state.settings.showNotes && note ? `<div class="note-text text-gray-500">${note}</div>` : ''}
+                    </div>
+                    <div></div>
+                </div>`;
+            elements.calendarBody.appendChild(cell);
+        }
     }
     
-    function createDateCell(year, month, day) {
-        const cell = document.createElement('div');
-        cell.className = 'date-cell border border-gray-700/50 cursor-pointer hover:bg-gray-700';
-        const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        cell.dataset.date = dateKey;
-
-        const content = document.createElement('div');
-        content.className = 'date-cell-content';
-
-        const dayNum = document.createElement('span');
-        dayNum.textContent = day;
-        dayNum.className = 'text-sm font-bold self-start';
-        
-        const today = new Date();
-        if (year === today.getFullYear() && month === today.getMonth() && day === today.getDate()) {
-            dayNum.classList.add('bg-red-500', 'rounded-full', 'w-6', 'h-6', 'flex', 'items-center', 'justify-center');
-        }
-
-        const eventInfo = document.createElement('div');
-        eventInfo.className = 'text-center';
-        
-        const eventData = events[dateKey];
-        if (eventData) {
-            if (eventData.hours) {
-                const hoursEl = document.createElement('p');
-                hoursEl.textContent = `${eventData.hours}h`;
-                hoursEl.className = 'font-bold text-lg text-green-400';
-                eventInfo.appendChild(hoursEl);
-            }
-            if (eventData.note) {
-                const noteEl = document.createElement('p');
-                noteEl.textContent = eventData.note;
-                noteEl.className = 'note-text text-gray-400';
-                eventInfo.appendChild(noteEl);
-            }
-        }
-        
-        content.appendChild(dayNum);
-        content.appendChild(eventInfo);
-        cell.appendChild(content);
-
-        return cell;
-    }
-
-    // --- UI Updates ---
-    function populateSelectors() {
-        const currentYear = new Date().getFullYear();
-        for (let i = currentYear - 5; i <= currentYear + 5; i++) {
-            const option = document.createElement('option');
-            option.value = i;
-            option.textContent = `${i}年`;
-            yearSelect.appendChild(option);
-        }
-        for (let i = 0; i < 12; i++) {
-            const option = document.createElement('option');
-            option.value = i;
-            option.textContent = `${i + 1}月`;
-            monthSelect.appendChild(option);
+    function renderWeekView() {
+        elements.weekView.classList.remove('hidden');
+        elements.weekView.innerHTML = '';
+        let day = new Date(state.currentDate);
+        day.setDate(day.getDate() - day.getDay());
+        for (let i = 0; i < 7; i++) {
+            const dateKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+            const dayEl = document.createElement('div');
+            dayEl.className = 'p-2 border-b border-color cursor-pointer hover:bg-gray-500/10';
+            dayEl.dataset.date = dateKey;
+            dayEl.innerHTML = renderDayContent(dateKey);
+            elements.weekView.appendChild(dayEl);
+            day.setDate(day.getDate() + 1);
         }
     }
 
-    function updateDateFromSelectors() {
-        yearSelect.value = currentDate.getFullYear();
-        monthSelect.value = currentDate.getMonth();
+    function renderDayView() {
+        elements.dayView.classList.remove('hidden');
+        const dateKey = `${state.currentDate.getFullYear()}-${String(state.currentDate.getMonth() + 1).padStart(2, '0')}-${String(state.currentDate.getDate()).padStart(2, '0')}`;
+        elements.dayView.innerHTML = `<div class="p-2 cursor-pointer" data-date="${dateKey}">${renderDayContent(dateKey)}</div>`;
     }
 
-    function changeMonth(offset) {
-        currentDate.setMonth(currentDate.getMonth() + offset);
-        updateDateFromSelectors();
-        renderCalendar();
-        updateTotals();
+    function renderDayContent(dateKey) {
+        const dayEvents = state.events.filter(e => e.date === dateKey);
+        const d = new Date(dateKey+'T00:00:00');
+        const dayName = translations[state.settings.language][`weekday_${['sun','mon','tue','wed','thu','fri','sat'][d.getDay()]}_short`];
+        const dailyTotal = calculateDayTotal(dateKey);
+        let content = `<div class="font-bold mb-2 flex justify-between"><span>${dateKey} (${dayName})</span> ${state.settings.showDailyEarnings && dailyTotal > 0 ? `<span class="primary-text">$${Math.round(dailyTotal)}</span>` : ''}</div>`;
+        if (dayEvents.length === 0) {
+            content += `<p class="text-sm text-gray-500">無紀錄</p>`;
+        } else {
+            dayEvents.forEach(e => {
+                if (e.type === 'shift') {
+                    content += `<div class="text-sm card p-2 rounded mb-1">Shift: ${e.start}-${e.end} (${e.hours.toFixed(1)}h) ${e.note ? `- ${e.note}`:''}</div>`;
+                } else {
+                    content += `<div class="text-sm card p-2 rounded mb-1">Adjustment: $${e.amount} (${e.note})</div>`;
+                }
+            });
+        }
+        return content;
     }
 
     function updateTotals() {
-        let totalHours = 0;
-        const year = currentDate.getFullYear();
-        const month = currentDate.getMonth() + 1;
-
-        for (const key in events) {
-            if (key.startsWith(`${year}-${String(month).padStart(2, '0')}`)) {
-                totalHours += events[key].hours || 0;
+        let totalHours = 0, totalEarnings = 0;
+        const { start, end } = getCurrentViewDateRange();
+        const relevantEvents = state.events.filter(e => e.date >= start && e.date <= end);
+        
+        relevantEvents.forEach(e => {
+            if (e.type === 'shift') {
+                totalHours += e.hours;
+                totalEarnings += e.hours * (e.allowanceRate || 1) * state.settings.hourlyWage;
+            } else if (e.type === 'adjustment') {
+                totalEarnings += e.amount;
             }
-        }
-
-        totalHoursEl.textContent = `${totalHours} 小時`;
-        totalEarningsEl.textContent = `$ ${Math.round(totalHours * hourlyWage)}`;
-    }
-    
-    function updateNoteVisibility() {
-        const notes = document.querySelectorAll('.note-text');
-        notes.forEach(note => {
-            note.style.display = showNotes ? 'block' : 'none';
         });
-    }
 
-    function updateNoteToggleVisual() {
-        // The visual update is now handled by pure CSS using the :checked pseudo-class
-    }
-
-    // --- Modals ---
-    function openShiftModal(dateKey) {
-        selectedDateKey = dateKey;
-        modalDateEl.textContent = dateKey;
-        const eventData = events[dateKey] || {};
-        noteInput.value = eventData.note || '';
-        customStartInput.value = '';
-        customEndInput.value = '';
-        shiftModal.classList.remove('hidden');
+        elements.totalHours.textContent = totalHours.toFixed(1);
+        elements.totalEarnings.textContent = `$ ${Math.round(totalEarnings)}`;
+        elements.footerTitle.dataset.lang = `footer_total_hours_${state.currentView}`;
+        setLanguage(state.settings.language);
     }
     
-    function closeShiftModal() {
-        shiftModal.classList.add('hidden');
-        selectedDateKey = null;
-    }
-    
-    function openSettingsModal() {
-        hourlyWageInput.value = hourlyWage;
-        settingsModal.classList.remove('hidden');
-    }
-
-    function closeSettingsModal() {
-        settingsModal.classList.add('hidden');
+    function getCurrentViewDateRange() {
+        const d = new Date(state.currentDate); let start, end;
+        if (state.currentView === 'month') { start = new Date(d.getFullYear(), d.getMonth(), 1); end = new Date(d.getFullYear(), d.getMonth() + 1, 0); } 
+        else if (state.currentView === 'week') { const first = d.getDate() - d.getDay(); start = new Date(new Date(d).setDate(first)); end = new Date(new Date(d).setDate(first + 6)); } 
+        else { start = end = d; }
+        const toKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        return { start: toKey(start), end: toKey(end) };
     }
 
-    // --- Event Handling ---
+    // --- Event Handlers ---
     function setupEventListeners() {
-        // Header
-        prevMonthBtn.addEventListener('click', () => changeMonth(-1));
-        nextMonthBtn.addEventListener('click', () => changeMonth(1));
-        yearSelect.addEventListener('change', () => {
-            currentDate.setFullYear(parseInt(yearSelect.value));
-            renderCalendar();
-            updateTotals();
-        });
-        monthSelect.addEventListener('change', () => {
-            currentDate.setMonth(parseInt(monthSelect.value));
-            renderCalendar();
-            updateTotals();
-        });
-        settingsBtn.addEventListener('click', openSettingsModal);
-        toggleNotes.addEventListener('change', () => {
-            showNotes = toggleNotes.checked;
-            updateNoteVisibility();
-            saveData();
-        });
-
-        // Calendar Interaction
-        calendarBody.addEventListener('mousedown', handleCellPress);
-        calendarBody.addEventListener('mouseup', handleCellRelease);
-        calendarBody.addEventListener('mouseleave', handleCellRelease);
-        calendarBody.addEventListener('touchstart', handleCellPress, { passive: true });
-        calendarBody.addEventListener('touchend', handleCellRelease);
-
-        // Shift Modal
-        closeModalBtn.addEventListener('click', closeShiftModal);
-        shiftModal.addEventListener('click', (e) => {
-            if (e.target.dataset.shift) {
-                handleShiftSelection(e.target.dataset.shift);
-            }
-        });
-        saveCustomBtn.addEventListener('click', handleCustomShift);
-        deleteShiftBtn.addEventListener('click', handleDeleteShift);
-        noteInput.addEventListener('input', handleNoteChange);
-
-        // Settings Modal
-        closeSettingsBtn.addEventListener('click', closeSettingsModal);
-        saveSettingsBtn.addEventListener('click', () => {
-            const newWage = parseFloat(hourlyWageInput.value);
-            if (!isNaN(newWage) && newWage > 0) {
-                hourlyWage = newWage;
-                wageDisplayEl.textContent = hourlyWage;
-                updateTotals();
-                saveData();
-                alert('時薪已儲存！');
-                closeSettingsModal();
-            } else {
-                alert('請輸入有效的時薪數字。');
-            }
-        });
-
-        // Clear Data Button
-        clearDataBtn.addEventListener('mousedown', startClearTimer);
-        clearDataBtn.addEventListener('mouseup', stopClearTimer);
-        clearDataBtn.addEventListener('mouseleave', stopClearTimer);
-        clearDataBtn.addEventListener('touchstart', startClearTimer, { passive: true });
-        clearDataBtn.addEventListener('touchend', stopClearTimer);
-        
-        // Summary Section
-        calculateSummaryBtn.addEventListener('click', calculateSummary);
-    }
-
-    function handleCellPress(e) {
-        const cell = e.target.closest('.date-cell');
-        if (!cell || !cell.dataset.date) return;
-        
-        longPressTimer = setTimeout(() => {
-            longPressTimer = null;
-            openShiftModal(cell.dataset.date);
-            if ('vibrate' in navigator) navigator.vibrate(50);
-            setTimeout(() => noteInput.focus(), 100);
-        }, 500);
-    }
-
-    function handleCellRelease(e) {
-        if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            const cell = e.target.closest('.date-cell');
-            if (cell && cell.dataset.date) {
-                openShiftModal(cell.dataset.date);
-            }
-        }
-    }
-
-    function handleShiftSelection(shiftType) {
-        if (!selectedDateKey) return;
-        let hours = 0;
-        if (shiftType === 'preset1') hours = 5;
-        if (shiftType === 'preset2') hours = 7;
-        if (!events[selectedDateKey]) events[selectedDateKey] = {};
-        events[selectedDateKey].hours = hours;
-        saveData();
-        renderCalendar();
-        updateTotals();
-        closeShiftModal();
+        elements.prevBtn.addEventListener('click', () => navigate(-1));
+        elements.nextBtn.addEventListener('click', () => navigate(1));
+        elements.yearSelect.addEventListener('change', handleDateSelectChange);
+        elements.monthSelect.addEventListener('change', handleDateSelectChange);
+        [elements.viewSwitcher, elements.viewSwitcherMobile].forEach(s => s.addEventListener('click', e => { if (e.target.matches('[data-view]')) { state.currentView = e.target.dataset.view; render(); } }));
+        [elements.monthView, elements.weekView, elements.dayView].forEach(v => v.addEventListener('click', e => { const cell = e.target.closest('[data-date]'); if (cell) openShiftModal(cell.dataset.date); }));
+        elements.settingsBtn.addEventListener('click', openSettingsModal);
+        elements.saveSettings.addEventListener('click', handleSaveSettings);
+        elements.closeModal.addEventListener('click', () => elements.shiftModal.classList.add('hidden'));
+        elements.saveShiftBtn.addEventListener('click', handleSaveShift);
+        elements.cancelEditBtn.addEventListener('click', cancelEdit);
+        elements.saveAdjustmentBtn.addEventListener('click', handleSaveAdjustment);
+        elements.importJsonBtn.addEventListener('click', () => elements.importJsonInput.click());
+        elements.importJsonInput.addEventListener('change', handleImportJSON);
+        elements.exportJsonBtn.addEventListener('click', exportJSON);
+        elements.clearDataBtn.addEventListener('mousedown', startClearTimer);
+        elements.clearDataBtn.addEventListener('mouseup', stopClearTimer);
+        elements.clearDataBtn.addEventListener('mouseleave', stopClearTimer);
+        elements.clearDataBtn.addEventListener('touchstart', startClearTimer, { passive: true });
+        elements.clearDataBtn.addEventListener('touchend', stopClearTimer);
+        // Instant apply for display settings
+        elements.settingTheme.addEventListener('change', e => { state.settings.theme = e.target.checked ? 'dark' : 'light'; setTheme(state.settings.theme); saveData('settings'); });
+        elements.settingShowNotes.addEventListener('change', e => { state.settings.showNotes = e.target.checked; render(); saveData('settings'); });
+        elements.settingShowDailyEarnings.addEventListener('change', e => { state.settings.showDailyEarnings = e.target.checked; render(); saveData('settings'); });
     }
     
-    function handleCustomShift() {
-        if (!selectedDateKey) return;
-        const start = customStartInput.value;
-        const end = customEndInput.value;
-        if (start && end) {
-            const startTime = new Date(`1970-01-01T${start}`);
-            let endTime = new Date(`1970-01-01T${end}`);
-            if (endTime < startTime) endTime.setDate(endTime.getDate() + 1);
-            const diff = (endTime - startTime) / 1000 / 60 / 60;
-            if (diff > 0) {
-                if (!events[selectedDateKey]) events[selectedDateKey] = {};
-                events[selectedDateKey].hours = parseFloat(diff.toFixed(2));
-                saveData();
-                renderCalendar();
-                updateTotals();
-                closeShiftModal();
-            } else alert('結束時間必須晚於開始時間。');
-        } else alert('請選擇開始與結束時間。');
-    }
-
-    function handleNoteChange() {
-        if (!selectedDateKey) return;
-        if (!events[selectedDateKey]) events[selectedDateKey] = {};
-        events[selectedDateKey].note = noteInput.value;
-        saveData();
-        renderCalendar();
-        updateTotals();
-    }
-
-    function handleDeleteShift() {
-        if (selectedDateKey && events[selectedDateKey]) {
-            delete events[selectedDateKey];
-            saveData();
-            renderCalendar();
-            updateTotals();
-            closeShiftModal();
+    function navigate(offset) {
+        switch(state.currentView) {
+            case 'month': state.currentDate.setMonth(state.currentDate.getMonth() + offset); break;
+            case 'week': state.currentDate.setDate(state.currentDate.getDate() + (offset * 7)); break;
+            case 'day': state.currentDate.setDate(state.currentDate.getDate() + offset); break;
         }
+        updateDateFromSelectors(); render();
+    }
+    
+    function handleDateSelectChange() { state.currentDate.setFullYear(elements.yearSelect.value); state.currentDate.setMonth(elements.monthSelect.value); render(); }
+
+    function openSettingsModal() {
+        Object.keys(state.settings).forEach(key => {
+            const el = $(`#setting-${key.toLowerCase().replace('hourlywage','hourly-wage').replace('shownotes','show-notes').replace('showdailyearnings','show-daily-earnings').replace('multishift','multi-shift')}`);
+            if (el) { el.type === 'checkbox' ? el.checked = state.settings[key] : el.value = state.settings[key]; }
+        });
+        elements.hourlyWageInput.value = state.settings.hourlyWage;
+        elements.languageSelect.value = state.settings.language;
+        elements.settingTheme.checked = state.settings.theme === 'dark';
+        elements.settingsModal.classList.remove('hidden');
+    }
+
+    async function handleSaveSettings() {
+        const newSettings = {
+            hourlyWage: parseFloat(elements.hourlyWageInput.value) || 190,
+            language: elements.languageSelect.value,
+            theme: elements.settingTheme.checked ? 'dark' : 'light',
+            showNotes: elements.settingShowNotes.checked,
+            showDailyEarnings: elements.settingShowDailyEarnings.checked,
+            multiShift: elements.settingMultiShift.checked,
+            allowance: elements.settingAllowance.checked,
+            adjustment: elements.settingAdjustment.checked
+        };
+
+        const checkAndConfirm = async (key, message) => {
+            if (state.settings[key] && !newSettings[key]) {
+                const confirmed = await showConfirmation(message);
+                if (!confirmed) throw new Error('User cancelled');
+            }
+        };
+
+        try {
+            await checkAndConfirm('multiShift', "關閉多班模式將刪除每日的額外班表，只保留第一筆。確定嗎？");
+            await checkAndConfirm('allowance', "關閉津貼功能將會移除所有班表的加成計算。確定嗎？");
+            await checkAndConfirm('adjustment', "關閉額外調整功能將會刪除所有手動調整的金額。確定嗎？");
+        } catch (e) { return; } // User cancelled
+
+        // Perform deletions if confirmed
+        if (state.settings.multiShift && !newSettings.multiShift) { /* Deletion logic */ }
+
+        state.settings = newSettings;
+        await saveData('settings');
+        await setLanguage(state.settings.language);
+        setTheme(state.settings.theme);
+        elements.settingsModal.classList.add('hidden');
+        render();
+    }
+    
+    function openShiftModal(dateKey) {
+        state.selectedDateKey = dateKey;
+        cancelEdit(); // Reset edit state
+        elements.modalDate.textContent = dateKey;
+        elements.allowanceContainer.classList.toggle('hidden', !state.settings.allowance);
+        elements.adjustmentContainer.classList.toggle('hidden', !state.settings.adjustment);
+        elements.customStart.value = "12:00";
+        elements.customEnd.value = "12:00";
+        elements.shiftNote.value = "";
+        
+        renderShiftsList();
+        elements.shiftModal.classList.remove('hidden');
+    }
+
+    function renderShiftsList() {
+        elements.shiftsList.innerHTML = '';
+        const dayEvents = state.events.filter(e => e.date === state.selectedDateKey).sort((a,b) => (a.start || 'z').localeCompare(b.start || 'z'));
+        elements.modalDailyTotal.textContent = `本日總計: $${Math.round(calculateDayTotal(state.selectedDateKey))}`;
+
+        const dayShifts = dayEvents.filter(e => e.type === 'shift');
+        const hasShift = dayShifts.length > 0;
+        elements.addShiftForm.classList.toggle('hidden', !state.settings.multiShift && hasShift && !state.editingEventId);
+        
+        if (dayEvents.length === 0) { elements.shiftsList.innerHTML = `<p class="text-sm text-gray-500 text-center">本日無紀錄</p>`; return; }
+        
+        dayEvents.forEach(event => {
+            const li = document.createElement('div');
+            li.className = 'text-sm flex justify-between items-center p-2 card rounded';
+            let text = '';
+            if (event.type === 'shift') {
+                const earnings = calculateEventEarnings(event);
+                text = `<div>${event.start}-${event.end} (${event.hours.toFixed(1)}h) ${event.note ? `- ${event.note}`:''}</div><div class="font-bold">$${Math.round(earnings)}</div>`;
+            } else {
+                text = `<div>${event.note}</div><div class="font-bold">$${event.amount}</div>`;
+            }
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'flex-grow flex justify-between items-center';
+            contentDiv.innerHTML = text;
+            
+            const editBtn = document.createElement('button');
+            editBtn.textContent = '✏️';
+            editBtn.className = 'p-1 ml-2';
+            editBtn.onclick = () => startEditShift(event);
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.textContent = 'X';
+            deleteBtn.className = 'text-red-500 p-1 ml-2';
+            deleteBtn.onclick = async () => {
+                await db.delete('events', event.id);
+                state.events = state.events.filter(e => e.id !== event.id);
+                openShiftModal(state.selectedDateKey);
+                render();
+            };
+            
+            if (event.type === 'shift') li.appendChild(editBtn);
+            li.appendChild(contentDiv);
+            li.appendChild(deleteBtn);
+            elements.shiftsList.appendChild(li);
+        });
+    }
+    
+    function startEditShift(event) {
+        if (event.type !== 'shift') return; 
+        state.editingEventId = event.id;
+        elements.addShiftForm.classList.remove('hidden');
+        elements.customStart.value = event.start;
+        elements.customEnd.value = event.end;
+        elements.shiftNote.value = event.note;
+        elements.allowanceRate.value = event.allowanceRate || 1;
+        elements.saveShiftBtn.textContent = translations[state.settings.language]['modal_update_shift_btn'];
+        elements.cancelEditBtn.classList.remove('hidden');
+    }
+
+    function cancelEdit() {
+        state.editingEventId = null;
+        elements.addShiftForm.classList.remove('hidden');
+        elements.customStart.value = "12:00";
+        elements.customEnd.value = "12:00";
+        elements.shiftNote.value = "";
+        elements.allowanceRate.value = 1;
+        elements.saveShiftBtn.textContent = translations[state.settings.language]['modal_add_shift_btn'];
+        elements.cancelEditBtn.classList.add('hidden');
+        // Re-check if add form should be hidden in single-shift mode
+        const dayShifts = state.events.filter(e => e.date === state.selectedDateKey && e.type === 'shift');
+        if (!state.settings.multiShift && dayShifts.length > 0) {
+            elements.addShiftForm.classList.add('hidden');
+        }
+    }
+
+    async function handleSaveShift() {
+        const start = elements.customStart.value, end = elements.customEnd.value;
+        if (!start || !end) return alert('請輸入開始與結束時間');
+
+        const startTime = new Date(`1970-01-01T${start}`), endTime = new Date(`1970-01-01T${end}`);
+        if (endTime <= startTime) endTime.setDate(endTime.getDate() + 1);
+        const hours = (endTime - startTime) / 3600000;
+        
+        if (state.editingEventId) { // Update existing
+            const eventIndex = state.events.findIndex(e => e.id === state.editingEventId);
+            if (eventIndex > -1) {
+                const updatedEvent = { ...state.events[eventIndex], start, end, hours, note: elements.shiftNote.value, allowanceRate: state.settings.allowance ? parseFloat(elements.allowanceRate.value) : 1 };
+                await db.put('events', updatedEvent);
+                state.events[eventIndex] = updatedEvent;
+            }
+        } else { // Add new
+            const newEvent = { date: state.selectedDateKey, type: 'shift', start, end, hours, note: elements.shiftNote.value, allowanceRate: state.settings.allowance ? parseFloat(elements.allowanceRate.value) : 1 };
+            const id = await db.put('events', newEvent);
+            newEvent.id = id;
+            state.events.push(newEvent);
+        }
+        
+        openShiftModal(state.selectedDateKey);
+        render();
+    }
+    
+    async function handleSaveAdjustment() {
+        const amount = parseFloat(elements.adjustmentAmount.value);
+        const note = elements.adjustmentNote.value;
+        if (isNaN(amount) || !note) return alert('請輸入有效金額與事由');
+        const newEvent = { date: state.selectedDateKey, type: 'adjustment', amount, note };
+        const id = await db.put('events', newEvent);
+        newEvent.id = id;
+        state.events.push(newEvent);
+        elements.adjustmentAmount.value = '';
+        elements.adjustmentNote.value = '';
+        openShiftModal(state.selectedDateKey);
+        render();
+    }
+
+    function exportJSON() {
+        const data = { settings: state.settings, events: state.events };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `schedule-backup-${new Date().toISOString().slice(0,10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    function handleImportJSON(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const data = JSON.parse(event.target.result);
+                if (!data.settings || !data.events) throw new Error('Invalid file format');
+                const confirmed = await showConfirmation("這將會覆蓋所有現有資料，確定要匯入嗎？");
+                if (confirmed) {
+                    await db.clear('settings');
+                    await db.clear('events');
+                    state.settings = data.settings;
+                    state.events = data.events;
+                    await saveData('settings');
+                    for (const event of state.events) {
+                        delete event.id; 
+                        await db.put('events', event);
+                    }
+                    alert('匯入成功！頁面將會重新載入。');
+                    location.reload();
+                }
+            } catch (err) { alert('匯入失敗，檔案格式錯誤或已損毀。'); console.error(err); }
+        };
+        reader.readAsText(file);
+        e.target.value = ''; // Reset file input
     }
 
     function startClearTimer() {
-        clearDataHoldStart = Date.now();
-        clearProgress.style.transition = 'width 10s linear';
-        clearProgress.style.width = '100%';
-        
-        clearDataTimer = setTimeout(() => {
-            localStorage.clear();
-            events = {};
-            hourlyWage = 190;
-            showNotes = true;
-            alert('所有資料已清除！頁面將重新載入。');
+        let timerId = setTimeout(async () => {
+            await db.clear('settings');
+            await db.clear('events');
+            alert('資料已清除');
             location.reload();
         }, 10000);
+        elements.clearProgress.style.width = '100%';
+        elements.clearDataBtn.dataset.timerId = timerId;
     }
-
     function stopClearTimer() {
-        clearTimeout(clearDataTimer);
-        clearProgress.style.transition = 'width 0.5s ease-out';
-        clearProgress.style.width = '0%';
-    }
-    
-    function calculateSummary() {
-        const start = summaryStartDate.value;
-        const end = summaryEndDate.value;
-        
-        if (!start || !end) {
-            alert('請選擇開始與結束日期。');
-            return;
-        }
-        
-        if (new Date(end) < new Date(start)) {
-            alert('結束日期不能早於開始日期。');
-            return;
-        }
-        
-        let totalHours = 0;
-        const details = [];
-        
-        // Sort keys to ensure chronological order
-        const sortedKeys = Object.keys(events).sort();
-        
-        for (const dateKey of sortedKeys) {
-            if (dateKey >= start && dateKey <= end) {
-                const eventData = events[dateKey];
-                if (eventData && eventData.hours > 0) {
-                    totalHours += eventData.hours;
-                    details.push({
-                        date: dateKey,
-                        hours: eventData.hours,
-                        note: eventData.note || ''
-                    });
-                }
-            }
-        }
-        
-        const totalSalary = Math.round(totalHours * hourlyWage);
-        
-        summaryResultEl.innerHTML = `
-            <div class="text-center mb-4">
-                <p class="text-gray-400">總計工時</p>
-                <p class="text-2xl font-bold">${totalHours.toFixed(2)} 小時</p>
-                <p class="text-gray-400 mt-2">總計薪資</p>
-                <p class="text-3xl font-bold text-green-400">$ ${totalSalary}</p>
-            </div>
-            <div class="border-t border-gray-700 pt-2">
-                <h4 class="font-bold mb-2 text-center">明細</h4>
-                <div class="max-h-48 overflow-y-auto">
-                    ${details.length > 0 ? details.map(d => `
-                        <div class="summary-details-item">
-                            <div>
-                                <span class="font-semibold">${d.date}</span>
-                                ${d.note ? `<span class="text-xs text-gray-500 ml-2">(${d.note})</span>` : ''}
-                            </div>
-                            <span class="font-semibold text-green-400">${d.hours} 小時</span>
-                        </div>
-                    `).join('') : '<p class="text-gray-500 text-center">此區間內無工時紀錄。</p>'}
-                </div>
-            </div>
-        `;
+        clearTimeout(elements.clearDataBtn.dataset.timerId);
+        elements.clearProgress.style.transition = 'width 0.5s';
+        elements.clearProgress.style.width = '0%';
+        setTimeout(() => { elements.clearProgress.style.transition = 'width 10s linear'; }, 500);
     }
 
-    // --- Start the App ---
-    init();
+    // --- Utility Functions ---
+    function calculateEventEarnings(event) {
+        if (event.type === 'shift') {
+            return event.hours * (event.allowanceRate || 1) * state.settings.hourlyWage;
+        }
+        return event.amount || 0;
+    }
+
+    function calculateDayTotal(dateKey) {
+        return state.events.filter(e => e.date === dateKey).reduce((sum, e) => sum + calculateEventEarnings(e), 0);
+    }
+
+    async function setLanguage(lang) {
+        state.settings.language = lang;
+        $$('[data-lang]').forEach(el => { const key = el.dataset.lang; if (translations[lang]?.[key]) el.textContent = translations[lang][key]; });
+        elements.languageSelect.innerHTML = '';
+        for (const langCode in translations) {
+            const option = new Option({ 'en': 'English', 'zh-TW': '繁體中文', 'zh-CN': '简体中文' }[langCode], langCode);
+            elements.languageSelect.add(option);
+        }
+        elements.languageSelect.value = lang;
+    }
+
+    function setTheme(theme) { document.documentElement.className = theme; }
+
+    function showConfirmation(message) {
+        return new Promise(resolve => {
+            elements.confirmMessage.textContent = message;
+            elements.confirmModal.classList.remove('hidden');
+            elements.confirmOk.onclick = () => { elements.confirmModal.classList.add('hidden'); resolve(true); };
+            elements.confirmCancel.onclick = () => { elements.confirmModal.classList.add('hidden'); resolve(false); };
+        });
+    }
+
+    function populateSelectors() { for (let i = -5; i <= 5; i++) { const year = new Date().getFullYear() + i; const opt = new Option(`${year}年`, year); elements.yearSelect.add(opt); } for (let i = 0; i < 12; i++) { const opt = new Option(`${i + 1}月`, i); elements.monthSelect.add(opt); } };
+    function updateDateFromSelectors() { elements.yearSelect.value = state.currentDate.getFullYear(); elements.monthSelect.value = state.currentDate.getMonth(); };
+    
+    init().catch(err => { console.error("Application initialization failed:", err); alert("應用程式初始化失敗，請嘗試清除瀏覽器快取後重新整理頁面。"); });
 });
 </script>
 </body>
