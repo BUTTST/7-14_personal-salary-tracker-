@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>個人化班表與薪資追蹤器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+        html, body {
+            height: 100%;
+            overflow: hidden; /* 防止整個頁面滾動 */
+        }
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            display: flex;
+            flex-direction: column;
+        }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+        }
+        .week-band:nth-child(even) {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+        .date-cell {
+            position: relative;
+            padding-top: 100%; /* 維持方格比例 */
+            transition: all 0.2s ease-in-out;
+        }
+        .date-cell-content {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 4px;
+        }
+        .note-text {
+            font-size: 0.65rem;
+            line-height: 1.2;
+            word-break: break-all;
+            overflow: hidden;
+            max-height: 3.6em; /* 限制備註顯示行數 */
+        }
+        .clear-button-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 100%;
+            background-color: rgba(220, 38, 38, 0.7);
+            transition: width 10s linear; /* 10秒動畫 */
+            border-radius: 0.375rem;
+            width: 0;
+        }
+        /* 隱藏原生 input[type=time] 的圖示 */
+        input[type="time"]::-webkit-calendar-picker-indicator,
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            display: none;
+        }
+        /* 自訂備註開關樣式 */
+        #toggle-notes:checked + div .dot {
+            transform: translateX(1rem);
+        }
+        #toggle-notes:checked + div .block {
+            background-color: #3b82f6; /* blue-600 */
+        }
+        /* 讓日曆主體可以滾動 */
+        #calendar-body-wrapper {
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+        .summary-details-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem;
+            border-bottom: 1px solid #374151; /* gray-700 */
+        }
+        .summary-details-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+
+    <!-- Header -->
+    <header class="p-4 bg-gray-800 shadow-lg flex items-center justify-between flex-shrink-0">
+        <div class="flex items-center space-x-2">
+            <button id="prev-month-btn" class="p-2 rounded-full hover:bg-gray-700 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </button>
+            <select id="year-select" class="bg-gray-700 text-white rounded px-2 py-1 focus:outline-none"></select>
+            <select id="month-select" class="bg-gray-700 text-white rounded px-2 py-1 focus:outline-none"></select>
+            <button id="next-month-btn" class="p-2 rounded-full hover:bg-gray-700 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </button>
+        </div>
+        <div class="flex items-center space-x-4">
+            <div class="flex items-center space-x-2">
+                <span class="text-sm">備註</span>
+                <label for="toggle-notes" class="flex items-center cursor-pointer">
+                    <div class="relative">
+                        <input type="checkbox" id="toggle-notes" class="sr-only">
+                        <div class="block bg-gray-600 w-10 h-6 rounded-full transition"></div>
+                        <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition"></div>
+                    </div>
+                </label>
+            </div>
+            <button id="settings-btn" class="text-gray-400 hover:text-white transition">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0-2l.15-.08a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content (Calendar + Summary) -->
+    <div id="calendar-body-wrapper" class="flex-grow">
+        <!-- Calendar -->
+        <main id="calendar-container" class="flex-shrink-0">
+            <div class="calendar-grid text-center text-xs font-bold text-gray-400 p-2">
+                <div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div class="text-red-400">六</div><div class="text-red-400">日</div>
+            </div>
+            <div id="calendar-body"></div>
+        </main>
+
+        <!-- Summary Section -->
+        <section class="p-4 mt-4">
+            <details class="bg-gray-800 rounded-lg shadow-lg" open>
+                <summary class="p-4 font-bold text-lg cursor-pointer flex justify-between items-center">
+                    <span>自訂日期區間薪資彙總</span>
+                    <span class="text-sm text-gray-400">點擊展開/收合</span>
+                </summary>
+                <div class="p-4 border-t border-gray-700">
+                    <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
+                        <input type="date" id="summary-start-date" class="bg-gray-700 rounded p-2 text-center">
+                        <span class="text-gray-400">至</span>
+                        <input type="date" id="summary-end-date" class="bg-gray-700 rounded p-2 text-center">
+                        <button id="calculate-summary-btn" class="bg-blue-600 hover:bg-blue-700 p-2 px-4 rounded-lg transition w-full sm:w-auto">計算</button>
+                    </div>
+                    <div id="summary-result" class="bg-gray-900 p-4 rounded-lg min-h-[100px]">
+                        <p class="text-gray-500 text-center">請選擇日期區間並點擊計算。</p>
+                    </div>
+                </div>
+            </details>
+        </section>
+    </div>
+
+
+    <!-- Footer -->
+    <footer class="p-4 bg-gray-800 shadow-inner flex justify-around text-center flex-shrink-0">
+        <div>
+            <p class="text-sm text-gray-400">本月總工時</p>
+            <p id="total-hours" class="text-xl font-bold">0 小時</p>
+        </div>
+        <div>
+            <p class="text-sm text-gray-400">預估薪資 (時薪: <span id="wage-display">190</span>)</p>
+            <p id="total-earnings" class="text-xl font-bold text-green-400">$ 0</p>
+        </div>
+    </footer>
+
+    <!-- Shift Modal -->
+    <div id="shift-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50">
+        <div class="bg-gray-800 rounded-lg shadow-xl w-11/12 max-w-sm p-6">
+            <h3 class="text-lg font-bold mb-4">編輯 <span id="modal-date"></span></h3>
+            <div class="space-y-4">
+                <button data-shift="preset1" class="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-lg transition">時段 1: 18:00 - 23:00</button>
+                <button data-shift="preset2" class="w-full bg-teal-600 hover:bg-teal-700 p-3 rounded-lg transition">時段 2: 15:00 - 23:00 (休1h)</button>
+                <div>
+                    <p class="text-center text-gray-400 mb-2">自訂時段</p>
+                    <div class="flex items-center justify-center space-x-2">
+                        <input type="time" id="custom-start" class="bg-gray-700 rounded p-2 w-28 text-center">
+                        <span>-</span>
+                        <input type="time" id="custom-end" class="bg-gray-700 rounded p-2 w-28 text-center">
+                    </div>
+                     <button id="save-custom-shift" class="w-full bg-purple-600 hover:bg-purple-700 p-2 mt-2 rounded-lg transition">儲存自訂時段</button>
+                </div>
+                <textarea id="note-input" class="w-full bg-gray-700 rounded p-2 h-24" placeholder="在此輸入備註 (例如: 請假、國定假日加班...)"></textarea>
+            </div>
+            <div class="flex justify-between mt-6">
+                <button id="delete-shift" class="bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded transition">清除本日紀錄</button>
+                <button id="close-modal" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded transition">關閉</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50">
+        <div class="bg-gray-800 rounded-lg shadow-xl w-11/12 max-w-sm p-6">
+            <h3 class="text-lg font-bold mb-4">設定</h3>
+            <div class="space-y-4">
+                <div class="flex items-center justify-between">
+                    <label for="hourly-wage" class="text-lg">時薪設定</label>
+                    <input type="number" id="hourly-wage" class="bg-gray-700 text-white w-24 text-center p-2 rounded" value="190">
+                </div>
+                 <button id="save-settings" class="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-lg transition">儲存設定</button>
+            </div>
+            <div class="mt-8 border-t border-gray-700 pt-4">
+                 <p class="text-sm text-center text-red-400 mb-2">危險操作</p>
+                 <button id="clear-data-btn" class="w-full bg-red-800 text-white font-bold py-3 px-4 rounded relative overflow-hidden">
+                    <span class="z-10 relative">按住10秒清除所有資料</span>
+                    <div id="clear-progress" class="clear-button-progress"></div>
+                </button>
+            </div>
+            <div class="flex justify-end mt-6">
+                <button id="close-settings" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded transition">關閉</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- DOM Elements ---
+    const yearSelect = document.getElementById('year-select');
+    const monthSelect = document.getElementById('month-select');
+    const prevMonthBtn = document.getElementById('prev-month-btn');
+    const nextMonthBtn = document.getElementById('next-month-btn');
+    const calendarBody = document.getElementById('calendar-body');
+    const totalHoursEl = document.getElementById('total-hours');
+    const totalEarningsEl = document.getElementById('total-earnings');
+    const wageDisplayEl = document.getElementById('wage-display');
+    const toggleNotes = document.getElementById('toggle-notes');
+
+    // Modals
+    const shiftModal = document.getElementById('shift-modal');
+    const settingsModal = document.getElementById('settings-modal');
+    const closeModalBtn = document.getElementById('close-modal');
+    const closeSettingsBtn = document.getElementById('close-settings');
+    const settingsBtn = document.getElementById('settings-btn');
+
+    // Shift Modal Elements
+    const modalDateEl = document.getElementById('modal-date');
+    const noteInput = document.getElementById('note-input');
+    const deleteShiftBtn = document.getElementById('delete-shift');
+    const customStartInput = document.getElementById('custom-start');
+    const customEndInput = document.getElementById('custom-end');
+    const saveCustomBtn = document.getElementById('save-custom-shift');
+
+    // Settings Modal Elements
+    const hourlyWageInput = document.getElementById('hourly-wage');
+    const saveSettingsBtn = document.getElementById('save-settings');
+    const clearDataBtn = document.getElementById('clear-data-btn');
+    const clearProgress = document.getElementById('clear-progress');
+    
+    // Summary Elements
+    const summaryStartDate = document.getElementById('summary-start-date');
+    const summaryEndDate = document.getElementById('summary-end-date');
+    const calculateSummaryBtn = document.getElementById('calculate-summary-btn');
+    const summaryResultEl = document.getElementById('summary-result');
+
+
+    // --- State ---
+    let currentDate = new Date(2025, 6, 1); // Default to 2025 July
+    let events = {};
+    let hourlyWage = 190;
+    let showNotes = true;
+    let selectedDateKey = null;
+    let longPressTimer;
+    let clearDataTimer;
+    let clearDataHoldStart;
+
+    // --- Initialization ---
+    function init() {
+        loadData();
+        populateSelectors();
+        updateDateFromSelectors();
+        renderCalendar();
+        updateTotals();
+        setupEventListeners();
+        updateNoteToggleVisual();
+    }
+
+    // --- Data Persistence ---
+    function saveData() {
+        localStorage.setItem('schedule_events', JSON.stringify(events));
+        localStorage.setItem('schedule_wage', hourlyWage);
+        localStorage.setItem('schedule_show_notes', showNotes);
+    }
+
+    function loadData() {
+        const savedEvents = localStorage.getItem('schedule_events');
+        if (savedEvents) {
+            events = JSON.parse(savedEvents);
+        }
+        const savedWage = localStorage.getItem('schedule_wage');
+        if (savedWage) {
+            hourlyWage = parseFloat(savedWage);
+        }
+        const savedShowNotes = localStorage.getItem('schedule_show_notes');
+        if (savedShowNotes !== null) {
+            showNotes = JSON.parse(savedShowNotes);
+        }
+        hourlyWageInput.value = hourlyWage;
+        wageDisplayEl.textContent = hourlyWage;
+        toggleNotes.checked = showNotes;
+    }
+
+    // --- Calendar Rendering ---
+    function renderCalendar() {
+        calendarBody.innerHTML = '';
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+
+        const firstDayOfMonth = new Date(year, month, 1);
+        const lastDayOfMonth = new Date(year, month + 1, 0);
+        const daysInMonth = lastDayOfMonth.getDate();
+
+        let dayOfWeek = firstDayOfMonth.getDay();
+        dayOfWeek = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Monday is 0, Sunday is 6
+
+        const calendarFragment = document.createDocumentFragment();
+        let weekEl = document.createElement('div');
+        weekEl.className = 'calendar-grid week-band';
+
+        for (let i = 0; i < dayOfWeek; i++) {
+            const padder = document.createElement('div');
+            padder.className = 'date-cell';
+            weekEl.appendChild(padder);
+        }
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            if ((dayOfWeek + day - 1) % 7 === 0 && day > 1) {
+                calendarFragment.appendChild(weekEl);
+                weekEl = document.createElement('div');
+                weekEl.className = 'calendar-grid week-band';
+            }
+            
+            const cell = createDateCell(year, month, day);
+            weekEl.appendChild(cell);
+        }
+        calendarFragment.appendChild(weekEl);
+
+        calendarBody.appendChild(calendarFragment);
+        updateNoteVisibility();
+    }
+    
+    function createDateCell(year, month, day) {
+        const cell = document.createElement('div');
+        cell.className = 'date-cell border border-gray-700/50 cursor-pointer hover:bg-gray-700';
+        const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        cell.dataset.date = dateKey;
+
+        const content = document.createElement('div');
+        content.className = 'date-cell-content';
+
+        const dayNum = document.createElement('span');
+        dayNum.textContent = day;
+        dayNum.className = 'text-sm font-bold self-start';
+        
+        const today = new Date();
+        if (year === today.getFullYear() && month === today.getMonth() && day === today.getDate()) {
+            dayNum.classList.add('bg-red-500', 'rounded-full', 'w-6', 'h-6', 'flex', 'items-center', 'justify-center');
+        }
+
+        const eventInfo = document.createElement('div');
+        eventInfo.className = 'text-center';
+        
+        const eventData = events[dateKey];
+        if (eventData) {
+            if (eventData.hours) {
+                const hoursEl = document.createElement('p');
+                hoursEl.textContent = `${eventData.hours}h`;
+                hoursEl.className = 'font-bold text-lg text-green-400';
+                eventInfo.appendChild(hoursEl);
+            }
+            if (eventData.note) {
+                const noteEl = document.createElement('p');
+                noteEl.textContent = eventData.note;
+                noteEl.className = 'note-text text-gray-400';
+                eventInfo.appendChild(noteEl);
+            }
+        }
+        
+        content.appendChild(dayNum);
+        content.appendChild(eventInfo);
+        cell.appendChild(content);
+
+        return cell;
+    }
+
+    // --- UI Updates ---
+    function populateSelectors() {
+        const currentYear = new Date().getFullYear();
+        for (let i = currentYear - 5; i <= currentYear + 5; i++) {
+            const option = document.createElement('option');
+            option.value = i;
+            option.textContent = `${i}年`;
+            yearSelect.appendChild(option);
+        }
+        for (let i = 0; i < 12; i++) {
+            const option = document.createElement('option');
+            option.value = i;
+            option.textContent = `${i + 1}月`;
+            monthSelect.appendChild(option);
+        }
+    }
+
+    function updateDateFromSelectors() {
+        yearSelect.value = currentDate.getFullYear();
+        monthSelect.value = currentDate.getMonth();
+    }
+
+    function changeMonth(offset) {
+        currentDate.setMonth(currentDate.getMonth() + offset);
+        updateDateFromSelectors();
+        renderCalendar();
+        updateTotals();
+    }
+
+    function updateTotals() {
+        let totalHours = 0;
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth() + 1;
+
+        for (const key in events) {
+            if (key.startsWith(`${year}-${String(month).padStart(2, '0')}`)) {
+                totalHours += events[key].hours || 0;
+            }
+        }
+
+        totalHoursEl.textContent = `${totalHours} 小時`;
+        totalEarningsEl.textContent = `$ ${Math.round(totalHours * hourlyWage)}`;
+    }
+    
+    function updateNoteVisibility() {
+        const notes = document.querySelectorAll('.note-text');
+        notes.forEach(note => {
+            note.style.display = showNotes ? 'block' : 'none';
+        });
+    }
+
+    function updateNoteToggleVisual() {
+        // The visual update is now handled by pure CSS using the :checked pseudo-class
+    }
+
+    // --- Modals ---
+    function openShiftModal(dateKey) {
+        selectedDateKey = dateKey;
+        modalDateEl.textContent = dateKey;
+        const eventData = events[dateKey] || {};
+        noteInput.value = eventData.note || '';
+        customStartInput.value = '';
+        customEndInput.value = '';
+        shiftModal.classList.remove('hidden');
+    }
+    
+    function closeShiftModal() {
+        shiftModal.classList.add('hidden');
+        selectedDateKey = null;
+    }
+    
+    function openSettingsModal() {
+        hourlyWageInput.value = hourlyWage;
+        settingsModal.classList.remove('hidden');
+    }
+
+    function closeSettingsModal() {
+        settingsModal.classList.add('hidden');
+    }
+
+    // --- Event Handling ---
+    function setupEventListeners() {
+        // Header
+        prevMonthBtn.addEventListener('click', () => changeMonth(-1));
+        nextMonthBtn.addEventListener('click', () => changeMonth(1));
+        yearSelect.addEventListener('change', () => {
+            currentDate.setFullYear(parseInt(yearSelect.value));
+            renderCalendar();
+            updateTotals();
+        });
+        monthSelect.addEventListener('change', () => {
+            currentDate.setMonth(parseInt(monthSelect.value));
+            renderCalendar();
+            updateTotals();
+        });
+        settingsBtn.addEventListener('click', openSettingsModal);
+        toggleNotes.addEventListener('change', () => {
+            showNotes = toggleNotes.checked;
+            updateNoteVisibility();
+            saveData();
+        });
+
+        // Calendar Interaction
+        calendarBody.addEventListener('mousedown', handleCellPress);
+        calendarBody.addEventListener('mouseup', handleCellRelease);
+        calendarBody.addEventListener('mouseleave', handleCellRelease);
+        calendarBody.addEventListener('touchstart', handleCellPress, { passive: true });
+        calendarBody.addEventListener('touchend', handleCellRelease);
+
+        // Shift Modal
+        closeModalBtn.addEventListener('click', closeShiftModal);
+        shiftModal.addEventListener('click', (e) => {
+            if (e.target.dataset.shift) {
+                handleShiftSelection(e.target.dataset.shift);
+            }
+        });
+        saveCustomBtn.addEventListener('click', handleCustomShift);
+        deleteShiftBtn.addEventListener('click', handleDeleteShift);
+        noteInput.addEventListener('input', handleNoteChange);
+
+        // Settings Modal
+        closeSettingsBtn.addEventListener('click', closeSettingsModal);
+        saveSettingsBtn.addEventListener('click', () => {
+            const newWage = parseFloat(hourlyWageInput.value);
+            if (!isNaN(newWage) && newWage > 0) {
+                hourlyWage = newWage;
+                wageDisplayEl.textContent = hourlyWage;
+                updateTotals();
+                saveData();
+                alert('時薪已儲存！');
+                closeSettingsModal();
+            } else {
+                alert('請輸入有效的時薪數字。');
+            }
+        });
+
+        // Clear Data Button
+        clearDataBtn.addEventListener('mousedown', startClearTimer);
+        clearDataBtn.addEventListener('mouseup', stopClearTimer);
+        clearDataBtn.addEventListener('mouseleave', stopClearTimer);
+        clearDataBtn.addEventListener('touchstart', startClearTimer, { passive: true });
+        clearDataBtn.addEventListener('touchend', stopClearTimer);
+        
+        // Summary Section
+        calculateSummaryBtn.addEventListener('click', calculateSummary);
+    }
+
+    function handleCellPress(e) {
+        const cell = e.target.closest('.date-cell');
+        if (!cell || !cell.dataset.date) return;
+        
+        longPressTimer = setTimeout(() => {
+            longPressTimer = null;
+            openShiftModal(cell.dataset.date);
+            if ('vibrate' in navigator) navigator.vibrate(50);
+            setTimeout(() => noteInput.focus(), 100);
+        }, 500);
+    }
+
+    function handleCellRelease(e) {
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            const cell = e.target.closest('.date-cell');
+            if (cell && cell.dataset.date) {
+                openShiftModal(cell.dataset.date);
+            }
+        }
+    }
+
+    function handleShiftSelection(shiftType) {
+        if (!selectedDateKey) return;
+        let hours = 0;
+        if (shiftType === 'preset1') hours = 5;
+        if (shiftType === 'preset2') hours = 7;
+        if (!events[selectedDateKey]) events[selectedDateKey] = {};
+        events[selectedDateKey].hours = hours;
+        saveData();
+        renderCalendar();
+        updateTotals();
+        closeShiftModal();
+    }
+    
+    function handleCustomShift() {
+        if (!selectedDateKey) return;
+        const start = customStartInput.value;
+        const end = customEndInput.value;
+        if (start && end) {
+            const startTime = new Date(`1970-01-01T${start}`);
+            let endTime = new Date(`1970-01-01T${end}`);
+            if (endTime < startTime) endTime.setDate(endTime.getDate() + 1);
+            const diff = (endTime - startTime) / 1000 / 60 / 60;
+            if (diff > 0) {
+                if (!events[selectedDateKey]) events[selectedDateKey] = {};
+                events[selectedDateKey].hours = parseFloat(diff.toFixed(2));
+                saveData();
+                renderCalendar();
+                updateTotals();
+                closeShiftModal();
+            } else alert('結束時間必須晚於開始時間。');
+        } else alert('請選擇開始與結束時間。');
+    }
+
+    function handleNoteChange() {
+        if (!selectedDateKey) return;
+        if (!events[selectedDateKey]) events[selectedDateKey] = {};
+        events[selectedDateKey].note = noteInput.value;
+        saveData();
+        renderCalendar();
+        updateTotals();
+    }
+
+    function handleDeleteShift() {
+        if (selectedDateKey && events[selectedDateKey]) {
+            delete events[selectedDateKey];
+            saveData();
+            renderCalendar();
+            updateTotals();
+            closeShiftModal();
+        }
+    }
+
+    function startClearTimer() {
+        clearDataHoldStart = Date.now();
+        clearProgress.style.transition = 'width 10s linear';
+        clearProgress.style.width = '100%';
+        
+        clearDataTimer = setTimeout(() => {
+            localStorage.clear();
+            events = {};
+            hourlyWage = 190;
+            showNotes = true;
+            alert('所有資料已清除！頁面將重新載入。');
+            location.reload();
+        }, 10000);
+    }
+
+    function stopClearTimer() {
+        clearTimeout(clearDataTimer);
+        clearProgress.style.transition = 'width 0.5s ease-out';
+        clearProgress.style.width = '0%';
+    }
+    
+    function calculateSummary() {
+        const start = summaryStartDate.value;
+        const end = summaryEndDate.value;
+        
+        if (!start || !end) {
+            alert('請選擇開始與結束日期。');
+            return;
+        }
+        
+        if (new Date(end) < new Date(start)) {
+            alert('結束日期不能早於開始日期。');
+            return;
+        }
+        
+        let totalHours = 0;
+        const details = [];
+        
+        // Sort keys to ensure chronological order
+        const sortedKeys = Object.keys(events).sort();
+        
+        for (const dateKey of sortedKeys) {
+            if (dateKey >= start && dateKey <= end) {
+                const eventData = events[dateKey];
+                if (eventData && eventData.hours > 0) {
+                    totalHours += eventData.hours;
+                    details.push({
+                        date: dateKey,
+                        hours: eventData.hours,
+                        note: eventData.note || ''
+                    });
+                }
+            }
+        }
+        
+        const totalSalary = Math.round(totalHours * hourlyWage);
+        
+        summaryResultEl.innerHTML = `
+            <div class="text-center mb-4">
+                <p class="text-gray-400">總計工時</p>
+                <p class="text-2xl font-bold">${totalHours.toFixed(2)} 小時</p>
+                <p class="text-gray-400 mt-2">總計薪資</p>
+                <p class="text-3xl font-bold text-green-400">$ ${totalSalary}</p>
+            </div>
+            <div class="border-t border-gray-700 pt-2">
+                <h4 class="font-bold mb-2 text-center">明細</h4>
+                <div class="max-h-48 overflow-y-auto">
+                    ${details.length > 0 ? details.map(d => `
+                        <div class="summary-details-item">
+                            <div>
+                                <span class="font-semibold">${d.date}</span>
+                                ${d.note ? `<span class="text-xs text-gray-500 ml-2">(${d.note})</span>` : ''}
+                            </div>
+                            <span class="font-semibold text-green-400">${d.hours} 小時</span>
+                        </div>
+                    `).join('') : '<p class="text-gray-500 text-center">此區間內無工時紀錄。</p>'}
+                </div>
+            </div>
+        `;
+    }
+
+    // --- Start the App ---
+    init();
+});
+</script>
+</body>
+</html>
